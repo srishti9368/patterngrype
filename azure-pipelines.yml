@@ -1,37 +1,43 @@
 trigger:
-- main   # change if your branch is different
+- main
 
 pool:
-  name: linux-grype   # EXACT agent pool name
+  name: linux-grype   # self-hosted Linux agent
 
 steps:
-# 1. Checkout code
+# Checkout code
 - checkout: self
 
-# 2. Install .NET SDK
+# Install .NET SDK
 - task: UseDotNet@2
   displayName: "Install .NET SDK"
   inputs:
     packageType: 'sdk'
     version: '8.0.x'
 
-# 3. Restore dependencies
+# Restore dependencies
 - script: |
     dotnet restore
   displayName: "Restore NuGet packages"
 
-# 4. Build C# project
+# Build project
 - script: |
     dotnet build --configuration Release
   displayName: "Build C# project"
 
-# 5. Run Anchore Grype scan
+# Generate SBOM
 - script: |
-    echo "Running Anchore Grype scan"
-    grype dir:. --scope all-layers
-  displayName: "Anchore Grype Vulnerability Scan"
+    syft dir:. -o cyclonedx-json > sbom.json
+  displayName: "Generate SBOM (CycloneDX)"
 
-# 6. (Optional) Fail pipeline on HIGH or CRITICAL
+# Scan SBOM with Grype
 - script: |
-    grype dir:. --fail-on high
-  displayName: "Fail on High/Critical Vulnerabilities"
+    grype sbom:sbom.json --fail-on high
+  displayName: "Grype Scan Using SBOM"
+
+# Publish SBOM & Scan Evidence
+- task: PublishPipelineArtifact@1
+  displayName: "Publish SBOM & Grype Evidence"
+  inputs:
+    targetPath: .
+    artifact: security-artifacts
